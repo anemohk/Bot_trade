@@ -1,5 +1,5 @@
 # bot.py
-import os # <-- إضافة مكتبة جديدة
+import os
 from flask import Flask, request, jsonify
 import requests
 import threading
@@ -7,9 +7,9 @@ import time
 from datetime import datetime, timedelta
 
 # --- إعدادات ---
-# سيتم الآن قراءة هذه المتغيرات من إعدادات Render
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+# تم وضع التوكن والمعرف مباشرة هنا
+TELEGRAM_TOKEN = "8059201152:AAH8uTx33ZeZFENmWrFBtFX7uGQJtvQcNbw"
+TELEGRAM_CHAT_ID = "-1002817981631"
 
 # --- متغيرات لتخزين الإحصائيات ---
 stats = {
@@ -19,9 +19,6 @@ stats = {
 }
 
 app = Flask(__name__)
-
-# --- بقية الكود تبقى كما هي تماماً ---
-# (انسخ والصق كل الدوال من الرد السابق هنا: send_telegram_message, process_trade, etc.)
 
 # --- دالة لإرسال الرسائل إلى تليجرام ---
 def send_telegram_message(message):
@@ -80,8 +77,6 @@ def check_and_reset_stats():
         
 @app.route('/webhook', methods=['POST'])
 def tradingview_webhook():
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        return jsonify({"status": "error", "message": "Bot credentials are not set"}), 500
     check_and_reset_stats()
     data = request.json
     if not data:
@@ -123,5 +118,3 @@ def update_stats():
 @app.route('/')
 def index():
     return "Bot is alive!", 200
-
-# لا تحتاج قسم if __name__ == '__main__': لأن Render يستخدم Gunicorn
