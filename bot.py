@@ -1,178 +1,127 @@
-# =============================================================================
-#           Final Corrected Code for bot.py - © 2024 Gemini AI
-# =============================================================================
-
-import os
-import telegram
-import asyncio
-import json
-import sqlite3
+# bot.py
+import os # <-- إضافة مكتبة جديدة
+from flask import Flask, request, jsonify
+import requests
+import threading
+import time
 from datetime import datetime, timedelta
-from flask import Flask, request
-from apscheduler.schedulers.background import BackgroundScheduler
-import yfinance as yf
 
-# --- استدعاء المتغيرات الآمنة من بيئة الاستضافة (Render) ---
-TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-TELEGRAM_CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
+# --- إعدادات ---
+# سيتم الآن قراءة هذه المتغيرات من إعدادات Render
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-# --- إعداد البوت والخادم ---
-bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
+# --- متغيرات لتخزين الإحصائيات ---
+stats = {
+    "wins": 0,
+    "losses": 0,
+    "last_reset": datetime.now()
+}
+
 app = Flask(__name__)
-scheduler = BackgroundScheduler(timezone="UTC")
 
-# --- إعداد قاعدة البيانات (ذاكرة البوت) ---
-def init_db():
-    """
-    تنشئ هذه الدالة جدول الصفقات في قاعدة البيانات إذا لم يكن موجودًا.
-    """
-    conn = sqlite3.connect('trades.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS trades (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol TEXT NOT NULL,
-            direction TEXT NOT NULL,
-            entry_price REAL NOT NULL,
-            expiry_minutes INTEGER NOT NULL,
-            entry_time TIMESTAMP NOT NULL,
-            status TEXT NOT NULL
-        )
-    ''')
-    conn.commit()
-    conn.close()
+# --- بقية الكود تبقى كما هي تماماً ---
+# (انسخ والصق كل الدوال من الرد السابق هنا: send_telegram_message, process_trade, etc.)
 
-# --- الوظائف المساعدة ---
-async def send_telegram_message(message):
-    """
-    دالة لإرسال الرسائل إلى قناة التليجرام.
-    """
+# --- دالة لإرسال الرسائل إلى تليجرام ---
+def send_telegram_message(message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "Markdown"
+    }
     try:
-        await bot.send_message(
-            chat_id=TELEGRAM_CHANNEL_ID,
-            text=message,
-            parse_mode='Markdown'
-        )
+        response = requests.post(url, json=payload)
+        return response.json()
     except Exception as e:
-        print(f"Error sending telegram message: {e}")
-
-def get_current_price(symbol):
-    """
-    تجلب السعر الحالي للزوج من Yahoo Finance.
-    """
-    try:
-        # تحويل الصيغة لتناسب Yahoo Finance (مثال: EURUSD -> EURUSD=X)
-        ticker = yf.Ticker(f"{symbol}=X")
-        data = ticker.history(period='1d', interval='1m')
-        if not data.empty:
-            return data['Close'].iloc[-1]
-        print(f"No current price data found for {symbol}")
-        return None
-    except Exception as e:
-        print(f"Could not fetch price for {symbol} from yfinance: {e}")
+        print(f"Error sending message: {e}")
         return None
 
-def check_trade_outcome(trade_id):
-    """
-    تتحقق من نتيجة الصفقة بعد انتهاء مدتها وترسل النتيجة.
-    """
-    with app.app_context():
-        conn = sqlite3.connect('trades.db')
-        cursor = conn.cursor()
-        cursor.execute("SELECT symbol, direction, entry_price FROM trades WHERE id = ?", (trade_id,))
-        trade = cursor.fetchone()
+# --- دالة لمعالجة كل صفقة في خيط منفصل ---
+def process_trade(signal_data):
+    pair = signal_data.get("pair")
+    action = signal_data.get("action")
+    trade_time = datetime.now()
+    
+    entry_message = (
+        f"🚨 **إشارة جديدة** 🚨\n\n"
+        f"📈 **الزوج:** `{pair}`\n"
+        f"🔹 **الاتجاه:** `{action}`\n"
+        f"⏳ **مدة الصفقة:** 5 دقائق\n"
+        f"⏰ **التوقيت:** `{trade_time.strftime('%Y-%m-%d %H:%M:%S')}`"
+    )
+    send_telegram_message(entry_message)
+    
+    time.sleep(300)
+    
+    send_telegram_message(
+        f"🔔 **انتهت مدة الصفقة** 🔔\n\n"
+        f"الزوج: `{pair}` | الاتجاه: `{action}`\n\n"
+        f"**الرجاء تأكيد النتيجة يدويًا لتحديث الإحصائيات!**"
+    )
+
+def check_and_reset_stats():
+    global stats
+    if datetime.now() - stats["last_reset"] > timedelta(hours=24):
+        win_percentage = 0
+        if (stats['wins'] + stats['losses']) > 0:
+            win_percentage = (stats['wins'] / (stats['wins'] + stats['losses'])) * 100
+            
+        summary_message = (
+            f"📊 **ملخص الـ 24 ساعة الماضية** 📊\n\n"
+            f"✅ **الربح:** {stats['wins']}\n"
+            f"❌ **الخسارة:** {stats['losses']}\n"
+            f"🎯 **نسبة النجاح:** {win_percentage:.2f}%\n\n"
+            f"تم إعادة تعيين العداد. بالتوفيق في اليوم الجديد!"
+        )
+        send_telegram_message(summary_message)
+        stats = {"wins": 0, "losses": 0, "last_reset": datetime.now()}
         
-        if not trade:
-            print(f"Trade ID {trade_id} not found in database.")
-            conn.close()
-            return
-
-        symbol, direction, entry_price = trade
-        current_price = get_current_price(symbol)
-
-        if current_price is None:
-            print(f"Could not determine outcome for trade {trade_id}, no current price available.")
-            conn.close()
-            return
-
-        # تحديد الفوز أو الخسارة
-        if direction == "CALL":
-            result = "WIN" if current_price > entry_price else "LOSS"
-        elif direction == "PUT":
-            result = "WIN" if current_price < entry_price else "LOSS"
-        else:
-            result = "UNKNOWN"
-
-        cursor.execute("UPDATE trades SET status = ? WHERE id = ?", (result, trade_id))
-        conn.commit()
-        
-        outcome_symbol = "✅" if result == "WIN" else "❌"
-        # رسالة النتيجة المفصلة
-        outcome_message = f"""
-*{outcome_symbol} نـتـيـجـة الـصـفـقـة {outcome_symbol}*
-
-▫️ *الزوج:* {symbol}
-▫️ *الاتجاه:* {direction}
-▫️ *النتيجة:* *{result}*
-▫️ *سعر الدخول:* `{entry_price:.5f}`
-▫️ *السعر عند الإغلاق:* `{current_price:.5f}`
-"""
-        asyncio.run(send_telegram_message(outcome_message))
-        conn.close()
-
-# --- نقطة استقبال الإشارات من TradingView ---
 @app.route('/webhook', methods=['POST'])
 def tradingview_webhook():
-    """
-    تستقبل الإشارة كـ Webhook من TradingView.
-    """
-    try:
-        data = json.loads(request.get_data(as_text=True))
-        symbol = data['symbol']
-        direction = data['direction']
-        entry_price = data['entry_price']
-        expiry_minutes = data['expiry_minutes']
-        
-        # 1. إرسال رسالة الإشارة الجديدة (بدون سعر الدخول)
-        new_trade_message = f"""
-🔔 *إشـارة جـديـدة* 🔔
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return jsonify({"status": "error", "message": "Bot credentials are not set"}), 500
+    check_and_reset_stats()
+    data = request.json
+    if not data:
+        return jsonify({"status": "error", "message": "No data received"}), 400
+    print(f"Webhook received: {data}")
+    trade_thread = threading.Thread(target=process_trade, args=(data,))
+    trade_thread.start()
+    return jsonify({"status": "success"}), 200
 
-▫️ *الزوج:* {symbol}
-▫️ *الاتجاه:* {direction}
-▫️ *مدة الصفقة:* {expiry_minutes} دقائق
-"""
-        asyncio.run(send_telegram_message(new_trade_message))
+@app.route('/stats', methods=['GET'])
+def get_stats():
+    win_percentage = 0
+    total_trades = stats['wins'] + stats['losses']
+    if total_trades > 0:
+        win_percentage = (stats['wins'] / total_trades) * 100
+    stats_message = (
+        f"📊 **الإحصائيات الحالية** 📊\n\n"
+        f"✅ **الربح:** {stats['wins']}\n"
+        f"❌ **الخسارة:** {stats['losses']}\n"
+        f"📈 **إجمالي الصفقات:** {total_trades}\n"
+        f"🎯 **نسبة النجاح:** {win_percentage:.2f}%"
+    )
+    send_telegram_message(stats_message)
+    return jsonify(stats), 200
+    
+@app.route('/update_stats', methods=['GET'])
+def update_stats():
+    result = request.args.get('result')
+    if result == 'win':
+        stats['wins'] += 1
+        send_telegram_message(f"✅ تم تسجيل صفقة رابحة. الإحصائيات المحدثة: {stats['wins']} ربح / {stats['losses']} خسارة.")
+    elif result == 'loss':
+        stats['losses'] += 1
+        send_telegram_message(f"❌ تم تسجيل صفقة خاسرة. الإحصائيات المحدثة: {stats['wins']} ربح / {stats['losses']} خسارة.")
+    else:
+        return "Invalid result parameter. Use ?result=win or ?result=loss", 400
+    return "Stats updated!", 200
 
-        # 2. تسجيل الصفقة في قاعدة البيانات
-        conn = sqlite3.connect('trades.db')
-        cursor = conn.cursor()
-        entry_time = datetime.utcnow()
-        cursor.execute(
-            "INSERT INTO trades (symbol, direction, entry_price, expiry_minutes, entry_time, status) VALUES (?, ?, ?, ?, ?, ?)",
-            (symbol, direction, entry_price, expiry_minutes, entry_time, "PENDING")
-        )
-        trade_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-
-        # 3. جدولة التحقق من النتيجة
-        run_time = datetime.now() + timedelta(minutes=expiry_minutes)
-        scheduler.add_job(check_trade_outcome, 'date', run_date=run_time, args=[trade_id])
-        
-        return "Alert Received and Scheduled", 200
-
-    except Exception as e:
-        print(f"Error processing webhook: {e}")
-        return "Error while processing webhook", 400
-
-# --- نقطة النهاية الرئيسية للتأكد من أن الخادم يعمل ---
 @app.route('/')
 def index():
-    return "Bot server is alive and running!", 200
+    return "Bot is alive!", 200
 
-# --- تشغيل الخادم ---
-if __name__ == '__main__':
-    init_db()  # تهيئة قاعدة البيانات عند بدء التشغيل
-    scheduler.start() # بدء جدولة المهام
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-    
+# لا تحتاج قسم if __name__ == '__main__': لأن Render يستخدم Gunicorn
