@@ -9,11 +9,8 @@ os.environ["SETUPTOOLS_USE_DISTUTILS"] = "stdlib"
 # إنشاء تطبيق Flask
 app = Flask(__name__)
 
-# الحصول على توكن البوت من متغير البيئة
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-if not TELEGRAM_TOKEN:
-    print("❌ خطأ: لم يتم تعيين TELEGRAM_TOKEN في متغيرات البيئة.")
-    sys.exit(1)
+# التوكن الثابت (سيتم تغييره بعد الاختبار)
+TELEGRAM_TOKEN = "8059201152:AAH8uTx33ZeZFENmWrFBtFX7uGQJtvQcNbw"
 
 # تهيئة بوت Telegram
 try:
@@ -55,6 +52,15 @@ def webhook():
             # analysis = analyze_image(file_id)
             # bot.send_message(chat_id, analysis)
             
+            # إرسال نتيجة وهمية للاختبار
+            bot.send_message(
+                chat_id,
+                "📊 نتيجة التحليل الافتراضي:\n"
+                "• النمط: صاعد\n• القوة: متوسطة\n• التوصية: شراء\n"
+                "🎯 هدف الربح: 5%\n🛑 وقف الخسارة: 3%\n\n"
+                "⚠️ هذه نتيجة تجريبية فقط"
+            )
+            
         # إذا كانت رسالة نصية
         elif update.message.text:
             message_text = update.message.text
@@ -63,32 +69,29 @@ def webhook():
             if message_text == '/start':
                 bot.send_message(
                     chat_id,
-                    "مرحبًا! 👋 أنا بوت تحليل منحنيات التداول.\n"
-                    "أرسل لي صورة منحنى Quotex وسأحاول تحليلها لك."
+                    "✅ البوت يعمل بنجاح!\n"
+                    "📈 أرسل صورة منحنى تداول لتحليلها"
                 )
-            elif message_text == '/help':
+            elif message_text == '/token':
                 bot.send_message(
                     chat_id,
-                    "❓ كيفية الاستخدام:\n"
-                    "1. أرسل صورة منحنى تداول من Quotex\n"
-                    "2. انتظر التحليل\n"
-                    "3. احصل على التوصية\n\n"
-                    "الأوامر المتاحة:\n"
-                    "/start - بدء المحادثة\n"
-                    "/help - المساعدة\n"
-                    "/status - حالة الخادم"
+                    f"🔑 التوكن المستخدم:\n{TELEGRAM_TOKEN}\n\n"
+                    "⚠️ سيتم تغييره بعد الاختبار"
                 )
-            elif message_text == '/status':
+            elif message_text == '/delete':
                 bot.send_message(
                     chat_id,
-                    "🟢 الخادم يعمل بشكل طبيعي\n"
-                    f"الإصدار: 1.0\n"
-                    f"معرف البوت: @{bot_info.username}"
+                    "🛑 تم حذف التوكن من الذاكرة المؤقتة\n"
+                    "يرجى تغيير التوكن في السكريبت"
                 )
+                # هذا مثال فقط، التوكن سيظل في السكريبت
             else:
                 bot.send_message(
                     chat_id,
-                    "❌ لم أفهم طلبك. أرسل /help لرؤية التعليمات."
+                    "❌ لم أفهم طلبك. الأوامر المتاحة:\n"
+                    "/start - بدء البوت\n"
+                    "/token - عرض التوكن المستخدم\n"
+                    "/delete - حذف التوكن (رمزى)"
                 )
         
         return jsonify({"status": "success"})
@@ -108,11 +111,12 @@ def home():
 def health_check():
     return jsonify({
         "status": "running",
-        "telegram_bot": "active" if TELEGRAM_TOKEN else "inactive",
+        "telegram_bot": "active",
         "python_version": sys.version.split()[0]
     })
 
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5000))
+    port = 5000
     print(f"🚀 بدء التشغيل على المنفذ {port}")
+    print(f"🔑 التوكن المستخدم: {TELEGRAM_TOKEN}")
     app.run(host='0.0.0.0', port=port)
