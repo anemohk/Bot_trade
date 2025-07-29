@@ -91,19 +91,10 @@ def webhook():
                          "/start - بدء المحادثة\n"
                          "/help - المساعدة"
                 ))
-            elif message_text == '/port':
-                port = os.environ.get('PORT', 'غير معروف')
-                asyncio.run(bot.send_message(
-                    chat_id=chat_id,
-                    text=f"🔌 المنفذ المستخدم: {port}"
-                ))
             else:
                 asyncio.run(bot.send_message(
                     chat_id=chat_id,
-                    text="❌ لم أفهم طلبك. الأوامر المتاحة:\n"
-                         "/start - بدء البوت\n"
-                         "/help - المساعدة\n"
-                         "/port - عرض المنفذ المستخدم"
+                    text="❌ لم أفهم طلبك. أرسل /help لرؤية التعليمات."
                 ))
         
         return jsonify({"status": "success"})
@@ -120,22 +111,20 @@ def webhook():
 
 @app.route('/')
 def home():
-    port = os.environ.get('PORT', '5000')
-    return f"🤖 خادم بوت تحليل التداول يعمل بنجاح على المنفذ {port}!"
+    return "🤖 خادم بوت تحليل التداول يعمل بنجاح على المنفذ 10000!"
 
 @app.route('/health')
 def health_check():
-    port = os.environ.get('PORT', '5000')
     return jsonify({
         "status": "running",
         "telegram_bot": "active",
-        "port": port,
+        "port": 10000,
         "python_version": sys.version.split()[0]
     })
 
 if __name__ == '__main__':
-    # الحصول على المنفذ من متغير البيئة أو استخدام 5000 كافتراضي
-    port = int(os.environ.get('PORT', 5000))
+    # نستخدم المنفذ 10000 مباشرة - بدون متغير بيئة
+    port = 10000
     
     # الاستماع على جميع الواجهات (0.0.0.0) بدلاً من localhost
     print(f"🚀 بدء التشغيل على المنفذ {port}")
