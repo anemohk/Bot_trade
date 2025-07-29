@@ -1,27 +1,34 @@
 import os
 import sys
+import asyncio
 from flask import Flask, request, jsonify
-import telegram
-
-# تجنب مشاكل حزم setuptools
-os.environ["SETUPTOOLS_USE_DISTUTILS"] = "stdlib"
+from telegram import Update, Bot
+from telegram.error import InvalidToken
 
 # إنشاء تطبيق Flask
 app = Flask(__name__)
 
-# التوكن الثابت (سيتم تغييره بعد الاختبار)
+# التوكن الثابت
 TELEGRAM_TOKEN = "8059201152:AAH8uTx33ZeZFENmWrFBtFX7uGQJtvQcNbw"
 
-# تهيئة بوت Telegram
-try:
-    bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    bot_info = bot.get_me()
-    print(f"✅ تم تهيئة البوت بنجاح: @{bot_info.username}")
-except telegram.error.InvalidToken as e:
-    print(f"❌ توكن غير صالح: {e}")
-    sys.exit(1)
-except Exception as e:
-    print(f"❌ خطأ غير متوقع أثناء تهيئة البوت: {e}")
+# إنشاء كائن Bot بشكل غير متزامن
+bot = Bot(token=TELEGRAM_TOKEN)
+
+# تهيئة البوت بشكل غير متزامن
+async def initialize_bot():
+    try:
+        bot_info = await bot.get_me()
+        print(f"✅ تم تهيئة البوت بنجاح: @{bot_info.username}")
+        return True
+    except InvalidToken as e:
+        print(f"❌ توكن غير صالح: {e}")
+        return False
+    except Exception as e:
+        print(f"❌ خطأ غير متوقع أثناء تهيئة البوت: {e}")
+        return False
+
+# تشغيل التهيئة عند بدء التطبيق
+if not asyncio.run(initialize_bot()):
     sys.exit(1)
 
 @app.route('/webhook', methods=['POST'])
@@ -29,7 +36,7 @@ def webhook():
     try:
         # تحويل بيانات الطلب إلى كائن Update
         update_data = request.get_json(force=True)
-        update = telegram.Update.de_json(update_data, bot)
+        update = Update.de_json(update_data, bot)
         
         # التحقق من وجود الرسالة
         if not update or not update.message:
@@ -37,70 +44,58 @@ def webhook():
         
         chat_id = update.message.chat.id
 
-        # إذا كانت الرسالة تحتوي على صورة
+        # إرسال رسالة تأكيد
+        asyncio.run(bot.send_message(
+            chat_id=chat_id,
+            text="📩 تم استلام رسالتك بنجاح!"
+        ))
+        
+        # معالجة الصور
         if update.message.photo:
-            # نأخذ أعلى دقة صورة (آخر عنصر في القائمة)
             file_id = update.message.photo[-1].file_id
+            asyncio.run(bot.send_message(
+                chat_id=chat_id,
+                text=f"📸 تم استلام صورة (ID: {file_id})\n\nجاري التحليل..."
+            ))
             
-            # إرسال رسالة تأكيد
-            bot.send_message(
-                chat_id, 
-                f"📸 تم استلام صورة (ID: {file_id})\n\nجاري التحليل..."
-            )
+            # نتيجة تحليل وهمية
+            asyncio.run(bot.send_message(
+                chat_id=chat_id,
+                text="📊 نتيجة التحليل الافتراضي:\n"
+                     "• النمط: صاعد\n• التوصية: شراء\n"
+                     "🎯 هدف الربح: 5%\n🛑 وقف الخسارة: 3%"
+            ))
             
-            # هنا يمكنك إضافة تحليل الصورة
-            # analysis = analyze_image(file_id)
-            # bot.send_message(chat_id, analysis)
-            
-            # إرسال نتيجة وهمية للاختبار
-            bot.send_message(
-                chat_id,
-                "📊 نتيجة التحليل الافتراضي:\n"
-                "• النمط: صاعد\n• القوة: متوسطة\n• التوصية: شراء\n"
-                "🎯 هدف الربح: 5%\n🛑 وقف الخسارة: 3%\n\n"
-                "⚠️ هذه نتيجة تجريبية فقط"
-            )
-            
-        # إذا كانت رسالة نصية
+        # معالجة الرسائل النصية
         elif update.message.text:
             message_text = update.message.text
             
-            # معالجة الأوامر
             if message_text == '/start':
-                bot.send_message(
-                    chat_id,
-                    "✅ البوت يعمل بنجاح!\n"
-                    "📈 أرسل صورة منحنى تداول لتحليلها"
-                )
-            elif message_text == '/token':
-                bot.send_message(
-                    chat_id,
-                    f"🔑 التوكن المستخدم:\n{TELEGRAM_TOKEN}\n\n"
-                    "⚠️ سيتم تغييره بعد الاختبار"
-                )
-            elif message_text == '/delete':
-                bot.send_message(
-                    chat_id,
-                    "🛑 تم حذف التوكن من الذاكرة المؤقتة\n"
-                    "يرجى تغيير التوكن في السكريبت"
-                )
-                # هذا مثال فقط، التوكن سيظل في السكريبت
+                asyncio.run(bot.send_message(
+                    chat_id=chat_id,
+                    text="✅ البوت يعمل بنجاح!\n📈 أرسل صورة منحنى تداول لتحليلها"
+                ))
+            elif message_text == '/help':
+                asyncio.run(bot.send_message(
+                    chat_id=chat_id,
+                    text="❓ كيفية الاستخدام:\n"
+                         "1. أرسل صورة منحنى تداول\n"
+                         "2. انتظر التحليل\n"
+                         "3. احصل على التوصية\n\n"
+                         "الأوامر المتاحة:\n"
+                         "/start - بدء المحادثة\n"
+                         "/help - المساعدة"
+                ))
             else:
-                bot.send_message(
-                    chat_id,
-                    "❌ لم أفهم طلبك. الأوامر المتاحة:\n"
-                    "/start - بدء البوت\n"
-                    "/token - عرض التوكن المستخدم\n"
-                    "/delete - حذف التوكن (رمزى)"
-                )
+                asyncio.run(bot.send_message(
+                    chat_id=chat_id,
+                    text="❌ لم أفهم طلبك. أرسل /help لرؤية التعليمات."
+                ))
         
         return jsonify({"status": "success"})
     
     except Exception as e:
-        # طباعة الخطأ في السجلات
         print(f"❌ خطأ في معالجة الويب هوك: {e}")
-        # إرسال رسالة خطأ للمستخدم
-        bot.send_message(chat_id, "حدث خطأ أثناء معالجة طلبك. يرجى المحاولة لاحقًا.")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/')
